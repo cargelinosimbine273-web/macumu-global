@@ -4,9 +4,8 @@ on:
   push:
     branches:
       - main
-      - master
     paths:
-      - 'Macumu-Global-GitHub-Fase1.zip'
+      - '*.zip'
   workflow_dispatch:
 
 permissions:
@@ -19,28 +18,37 @@ jobs:
     steps:
       - name: Obter projecto
         uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extrair ficheiro ZIP
+      - name: Extrair projecto
         run: |
-          ARCHIVE="Macumu-Global-GitHub-Fase1.zip"
-          if [ ! -f "$ARCHIVE" ]; then
-            echo "Ficheiro ZIP não encontrado."
+          ZIP_FILE=$(find . -maxdepth 1 -type f -iname '*.zip' | head -n 1)
+
+          if [ -z "$ZIP_FILE" ]; then
+            echo "ZIP não encontrado"
             exit 1
           fi
-          mkdir -p /tmp/macumu-source
-          unzip -q -o "$ARCHIVE" -d /tmp/macumu-source
-          cp -a /tmp/macumu-source/. .
-          rm -f "$ARCHIVE"
 
-      - name: Guardar código no GitHub
+          mkdir -p /tmp/macumu-source
+          unzip -q "$ZIP_FILE" -d /tmp/macumu-source
+
+          PROJECT_DIR=$(find /tmp/macumu-source -type f \( -name settings.gradle -o -name settings.gradle.kts \) -printf '%h\n' | head -n 1)
+
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "Projecto Android não encontrado"
+            exit 1
+          fi
+
+          rsync -a --exclude='.git' --exclude='.github' "$PROJECT_DIR"/ ./
+
+          rm -f "$ZIP_FILE"
+
+      - name: Guardar projecto
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
           if ! git diff --cached --quiet; then
-            git commit -m "Adicionar código Macumu Global"
+            git commit -m "Preparar código Macumu Global"
             git push
           fi
 
@@ -50,21 +58,27 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Configurar Android SDK
+      - name: Configurar Android
         uses: android-actions/setup-android@v3
 
-      - name: Instalar Gradle
+      - name: Preparar Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '9.3.1'
+          gradle-version: '8.9'
 
       - name: Compilar APK
-        run: gradle --no-daemon :app:assembleDebug
+        run: |
+          if [ -f gradlew ]; then
+            chmod +x gradlew
+            ./gradlew --no-daemon :app:assembleDebug
+          else
+            gradle --no-daemon :app:assembleDebug
+          fi
 
       - name: Disponibilizar APK
         uses: actions/upload-artifact@v4
         with:
-          name: macumu-global-debug-apk
+          name: Macumu-Global-APK
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
