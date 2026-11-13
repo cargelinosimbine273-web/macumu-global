@@ -4,81 +4,71 @@ on:
   push:
     branches:
       - main
-    paths:
-      - '*.zip'
+    paths-ignore:
+      - '*.md'
+      - 'README.md'
+
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: macumu-global-build
+  cancel-in-progress: true
 
 jobs:
   preparar-apk:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Obter projecto
+      - name: Obter código do projecto
         uses: actions/checkout@v4
 
-      - name: Extrair projecto
-        run: |
-          ZIP_FILE=$(find . -maxdepth 1 -type f -iname '*.zip' | head -n 1)
-
-          if [ -z "$ZIP_FILE" ]; then
-            echo "ZIP não encontrado"
-            exit 1
-          fi
-
-          mkdir -p /tmp/macumu-source
-          unzip -q "$ZIP_FILE" -d /tmp/macumu-source
-
-          PROJECT_DIR=$(find /tmp/macumu-source -type f \( -name settings.gradle -o -name settings.gradle.kts \) -printf '%h\n' | head -n 1)
-
-          if [ -z "$PROJECT_DIR" ]; then
-            echo "Projecto Android não encontrado"
-            exit 1
-          fi
-
-          rsync -a --exclude='.git' --exclude='.github' "$PROJECT_DIR"/ ./
-
-          rm -f "$ZIP_FILE"
-
-      - name: Guardar projecto
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          if ! git diff --cached --quiet; then
-            git commit -m "Preparar código Macumu Global"
-            git push
-          fi
-
       - name: Configurar Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Configurar Android
+      - name: Configurar Android SDK
         uses: android-actions/setup-android@v4
+
+      - name: Aceitar licenças Android
+        run: yes | sdkmanager --licenses || true
 
       - name: Preparar Gradle
         uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.9'
 
-      - name: Compilar APK
+      - name: Verificar estrutura do projecto
         run: |
-          if [ -f gradlew ]; then
-            chmod +x gradlew
-            ./gradlew --no-daemon :app:assembleDebug
-          else
-            gradle --no-daemon :app:assembleDebug
+          echo "Verificando ficheiros do Macumu Global..."
+
+          if [ ! -f "settings.gradle.kts" ]; then
+            echo "Erro: settings.gradle.kts não encontrado."
+            exit 1
           fi
+
+          if [ ! -f "app/build.gradle.kts" ]; then
+            echo "Erro: app/build.gradle.kts não encontrado."
+            exit 1
+          fi
+
+          if [ ! -f "gradlew" ]; then
+            echo "Erro: Gradle Wrapper não encontrado."
+            exit 1
+          fi
+
+          chmod +x gradlew
+
+      - name: Compilar aplicação Android
+        run: |
+          ./gradlew --no-daemon --stacktrace :app:assembleDebug
 
       - name: Disponibilizar APK
         uses: actions/upload-artifact@v4
         with:
           name: Macumu-Global-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 14
