@@ -1,0 +1,70 @@
+name: Preparar Macumu Global e gerar APK
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'Macumu-Global-GitHub-Fase1.zip'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  preparar-apk:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Obter projecto
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extrair ficheiro ZIP
+        run: |
+          ARCHIVE="Macumu-Global-GitHub-Fase1.zip"
+          if [ ! -f "$ARCHIVE" ]; then
+            echo "Ficheiro ZIP não encontrado."
+            exit 1
+          fi
+          mkdir -p /tmp/macumu-source
+          unzip -q -o "$ARCHIVE" -d /tmp/macumu-source
+          cp -a /tmp/macumu-source/. .
+          rm -f "$ARCHIVE"
+
+      - name: Guardar código no GitHub
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m "Adicionar código Macumu Global"
+            git push
+          fi
+
+      - name: Configurar Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Configurar Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Instalar Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
+
+      - name: Compilar APK
+        run: gradle --no-daemon :app:assembleDebug
+
+      - name: Disponibilizar APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: macumu-global-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
