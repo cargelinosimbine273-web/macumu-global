@@ -1,0 +1,6 @@
+{
+  "name": "Macumu Global",
+  "description": "Plataforma de e-commerce, marketplace e afiliados em Moçambique e internacional. Do formal ao informal, tudo num só clique.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

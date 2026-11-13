@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "819165145099",
+    "project_id": "macumu-global",
+    "storage_bucket": "macumu-global.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:819165145099:android:c74f6674e3ce8eeafebf0e",
+        "android_client_info": {
+          "package_name": "com.aistudio.macumuglobal.hqvkrz"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA9u2qZSK1w-s4Syg9MtjyteKZ_vNRy9Y0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
