@@ -1,78 +1,113 @@
-name: Preparar Macumu Global e gerar APK
+name: Macumu Global - Build Android APK
 
+# 1. EVENTOS DE EXECUCAO
 on:
-push:
-branches:
-- main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
 
-workflow_dispatch:
-
+# 2. PERMISSOES
 permissions:
-contents: read
+  contents: read
 
+# 3. CONTROLO DE EXECUCOES
 concurrency:
-group: macumu-global-build
-cancel-in-progress: true
+  group: macumu-global-build
+  cancel-in-progress: true
 
+# 4. JOB PRINCIPAL
 jobs:
-preparar-apk:
-runs-on: ubuntu-latest
+  preparar-apk:
+    name: Compilar Macumu Global
+    runs-on: ubuntu-latest
 
-steps:
-  - name: Obter código do projecto
-    uses: actions/checkout@v4
+    steps:
 
-  - name: Configurar Java 17
-    uses: actions/setup-java@v5
-    with:
-      distribution: temurin
-      java-version: '17'
+      # ETAPA 1 - OBTER CODIGO
+      - name: 01 - Obter codigo do projecto
+        uses: actions/checkout@v4
 
-  - name: Configurar Android SDK
-    uses: android-actions/setup-android@v4
+      # ETAPA 2 - CONFIGURAR JAVA
+      - name: 02 - Configurar Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
 
-  - name: Aceitar licenças Android
-    run: yes | sdkmanager --licenses || true
+      # ETAPA 3 - CONFIGURAR ANDROID SDK
+      - name: 03 - Configurar Android SDK
+        uses: android-actions/setup-android@v4
 
-  - name: Instalar Gradle 9.3.1
-    uses: gradle/actions/setup-gradle@v4
-    with:
-      gradle-version: '9.3.1'
+      # ETAPA 4 - ACEITAR LICENCAS
+      - name: 04 - Aceitar licencas Android
+        run: yes | sdkmanager --licenses || true
 
-  - name: Verificar projecto
-    run: |
-      echo "A verificar Macumu Global..."
+      # ETAPA 5 - INSTALAR GRADLE
+      - name: 05 - Instalar Gradle 9.3.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
 
-      test -f settings.gradle.kts
-      test -f build.gradle.kts
-      test -f app/build.gradle.kts
+      # ETAPA 6 - VERIFICAR PROJECTO
+      - name: 06 - Verificar estrutura do projecto
+        run: |
+          echo "A verificar Macumu Global..."
 
-      echo "Estrutura do projecto encontrada."
+          test -f settings.gradle.kts
+          test -f build.gradle.kts
+          test -f app/build.gradle.kts
 
-  - name: Gerar certificado Debug
-    run: |
-      if [ ! -f "$GITHUB_WORKSPACE/debug.keystore" ]; then
-        keytool -genkeypair -v \
-          -keystore "$GITHUB_WORKSPACE/debug.keystore" \
-          -storepass android \
-          -alias androiddebugkey \
-          -keypass android \
-          -keyalg RSA \
-          -keysize 2048 \
-          -validity 10000 \
-          -dname "CN=Android Debug,O=Android,C=US"
-      fi
+          echo "Estrutura validada."
 
-      echo "Certificado Debug preparado."
+      # ETAPA 7 - GERAR CERTIFICADO DEBUG
+      - name: 07 - Gerar certificado Debug
+        run: |
+          KEYSTORE="$GITHUB_WORKSPACE/debug.keystore"
 
-  - name: Compilar APK
-    run: |
-      gradle --no-daemon --stacktrace :app:assembleDebug
+          if [ ! -f "$KEYSTORE" ]; then
+            echo "A gerar certificado Debug..."
 
-  - name: Disponibilizar APK
-    uses: actions/upload-artifact@v4
-    with:
-      name: Macumu-Global-APK
-      path: app/build/outputs/apk/debug/*.apk
-      if-no-files-found: error
-      retention-days: 14
+            keytool -genkeypair -v \
+              -keystore "$KEYSTORE" \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
+
+          echo "Certificado Debug preparado."
+
+      # ETAPA 8 - COMPILAR APLICACAO
+      - name: 08 - Compilar Macumu Global APK
+        run: |
+          echo "A iniciar compilacao..."
+
+          gradle --no-daemon --stacktrace :app:assembleDebug
+
+          echo "Compilacao concluida."
+
+      # ETAPA 9 - VERIFICAR APK
+      - name: 09 - Verificar APK gerado
+        run: |
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+
+          if [ ! -f "$APK" ]; then
+            echo "ERRO: APK nao encontrado."
+            exit 1
+          fi
+
+          echo "APK encontrado:"
+          ls -lh "$APK"
+
+      # ETAPA 10 - DISPONIBILIZAR APK
+      - name: 10 - Publicar APK para download
+        uses: actions/upload-artifact@v4
+        with:
+          name: Macumu-Global-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
