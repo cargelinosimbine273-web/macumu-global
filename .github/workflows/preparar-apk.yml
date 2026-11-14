@@ -38,10 +38,15 @@ jobs:
       # ETAPA 3 - CONFIGURAR ANDROID SDK
       - name: 03 - Configurar Android SDK
         uses: android-actions/setup-android@v4
+        with:
+          packages: |
+            platform-tools
+            platforms;android-36.1
+            build-tools;36.0.0
 
       # ETAPA 4 - ACEITAR LICENCAS
       - name: 04 - Aceitar licencas Android
-        run: yes | sdkmanager --licenses || true
+        run: yes | sdkmanager --licenses
 
       # ETAPA 5 - INSTALAR GRADLE
       - name: 05 - Instalar Gradle 9.3.1
@@ -82,13 +87,18 @@ jobs:
           echo "Certificado Debug preparado."
 
       # ETAPA 8 - COMPILAR APLICACAO
-      - name: 08 - Compilar Macumu Global APK
+      - name: 08 - Confirmar versoes do ambiente
         run: |
-          echo "A iniciar compilacao..."
+          java -version
+          gradle --version
+          sdkmanager --list_installed | grep -E 'platform-tools|platforms;android-36.1|build-tools;36.0.0'
 
-          gradle --no-daemon --stacktrace :app:assembleDebug
-
-          echo "Compilacao concluida."
+      # ETAPA 9 - COMPILAR E EXECUTAR TESTES UNITARIOS
+      - name: 09 - Compilar APK e executar testes unitarios
+        run: |
+          echo "A iniciar compilacao e testes unitarios..."
+          gradle --no-daemon --stacktrace :app:testDebugUnitTest :app:assembleDebug
+          echo "Compilacao e testes unitarios concluidos."
 
       # ETAPA 9 - VERIFICAR APK
       - name: 09 - Verificar APK gerado
@@ -103,11 +113,21 @@ jobs:
           echo "APK encontrado:"
           ls -lh "$APK"
 
-      # ETAPA 10 - DISPONIBILIZAR APK
-      - name: 10 - Publicar APK para download
+      # ETAPA 11 - DISPONIBILIZAR APK
+      - name: 11 - Publicar APK para download
         uses: actions/upload-artifact@v4
         with:
           name: Macumu-Global-APK
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
+
+      # RELATORIOS DE TESTE DISPONIVEIS MESMO QUANDO A COMPILACAO FALHA
+      - name: 12 - Guardar relatorios de teste
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Macumu-Global-Relatorios-Testes
+          path: app/build/reports/tests/
+          if-no-files-found: ignore
+          retention-days: 7
