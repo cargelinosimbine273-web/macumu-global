@@ -4,69 +4,90 @@ on:
   push:
     branches:
       - main
+
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: macumu-global-build-${{ github.ref }}
+  group: macumu-global-build
   cancel-in-progress: true
 
 jobs:
   preparar-apk:
+
     name: Verificar, testar e compilar APK
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
 
     steps:
 
+      # 1. Obter o projecto
       - name: 01 - Checkout do projecto
         uses: actions/checkout@v4
 
+      # 2. Verificar estrutura
       - name: 02 - Verificar estrutura Android
         shell: bash
         run: |
           set -euo pipefail
-
-          echo "A verificar Macumu Global..."
 
           test -f settings.gradle.kts
           test -f build.gradle.kts
           test -f app/build.gradle.kts
 
           echo "Estrutura Android confirmada."
-          echo "Gradle Wrapper não será necessário."
 
+      # 3. Configurar Java
       - name: 03 - Configurar Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
+      # 4. Configurar Android SDK
       - name: 04 - Configurar Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        with:
+          packages: |
+            platform-tools
+            platforms;android-36.1
+            build-tools;36.0.0
 
-      - name: 05 - Instalar Android SDK
+      # 5. Aceitar licenças
+      - name: 05 - Aceitar licenças Android
         shell: bash
         run: |
           set -euo pipefail
-
-          sdkmanager \
-            "platform-tools" \
-            "platforms;android-35" \
-            "platforms;android-36" \
-            "build-tools;35.0.0" \
-            "build-tools;36.0.0"
-
           yes | sdkmanager --licenses || true
 
-      - name: 06 - Instalar Gradle 9.3.1
+      # 6. Instalar Gradle
+      - name: 06 - Configurar Gradle 9.3.1
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.3.1'
 
-      - name: 07 - Verificar ferramentas
+      # 7. Preparar certificado Debug
+      - name: 07 - Preparar certificado Debug
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ ! -f debug.keystore ]; then
+            keytool -genkeypair -v \
+              -keystore debug.keystore \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
+
+      # 8. Verificar ferramentas
+      - name: 08 - Verificar ambiente
         shell: bash
         run: |
           set -euo pipefail
@@ -75,49 +96,48 @@ jobs:
           gradle --version
           sdkmanager --list_installed
 
-      - name: 08 - Limpar projecto
+      # 9. Limpar projecto
+      - name: 09 - Limpar projecto
         shell: bash
         run: |
           set -euo pipefail
-
           gradle --no-daemon clean
 
-      - name: 09 - Executar testes unitários
+      # 10. Executar testes unitários
+      - name: 10 - Executar testes unitários
         shell: bash
         run: |
           set -euo pipefail
 
-          gradle \
-            --no-daemon \
+          gradle --no-daemon \
             --stacktrace \
             :app:testDebugUnitTest
 
-      - name: 10 - Compilar APK Debug
+      # 11. Compilar APK
+      - name: 11 - Compilar APK Debug
         shell: bash
         run: |
           set -euo pipefail
 
-          gradle \
-            --no-daemon \
+          gradle --no-daemon \
             --stacktrace \
             :app:assembleDebug
 
-      - name: 11 - Verificar APK
+      # 12. Verificar APK
+      - name: 12 - Verificar APK
         shell: bash
         run: |
           set -euo pipefail
 
           APK="app/build/outputs/apk/debug/app-debug.apk"
 
-          if [ ! -f "$APK" ]; then
-            echo "ERRO: APK não encontrado."
-            exit 1
-          fi
+          test -f "$APK"
 
-          echo "APK criado:"
+          echo "APK produzido:"
           ls -lh "$APK"
 
-      - name: 12 - Disponibilizar APK
+      # 13. Disponibilizar APK
+      - name: 13 - Upload do APK
         uses: actions/upload-artifact@v4
         with:
           name: Macumu-Global-APK-Debug
@@ -125,11 +145,12 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: 13 - Guardar relatórios
+      # 14. Guardar relatórios
+      - name: 14 - Guardar relatórios
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Macumu-Global-Relatorios
+          name: Macumu-Global-Relatorios-Testes
           path: |
             app/build/reports/tests/
             app/build/test-results/
