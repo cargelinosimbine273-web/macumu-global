@@ -44,22 +44,45 @@ jobs:
       - name: Aceitar licencas Android
         run: yes | sdkmanager --licenses || true
 
-      - name: Verificar assinatura Debug persistente
+      - name: Localizar projecto e assinatura
+        shell: bash
         run: |
-          test -s "$GITHUB_WORKSPACE/debug.keystore"
+          PROJECT_DIR="$GITHUB_WORKSPACE"
+
+          if [ ! -f "$PROJECT_DIR/settings.gradle.kts" ]; then
+            PROJECT_DIR="$(find "$GITHUB_WORKSPACE" \
+              -name settings.gradle.kts \
+              -type f -print -quit | xargs dirname)"
+          fi
+
+          if [ -z "$PROJECT_DIR" ] || \
+             [ ! -f "$PROJECT_DIR/settings.gradle.kts" ]; then
+            echo "ERRO: projecto Gradle nao encontrado."
+            exit 1
+          fi
+
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Projecto localizado em: $PROJECT_DIR"
+
+          if [ ! -s "$PROJECT_DIR/debug.keystore" ]; then
+            echo "ERRO: debug.keystore nao encontrado."
+            exit 1
+          fi
+
           keytool -list \
-            -keystore "$GITHUB_WORKSPACE/debug.keystore" \
+            -keystore "$PROJECT_DIR/debug.keystore" \
             -storepass android \
             -alias androiddebugkey
 
       - name: Compilar APK
         run: |
+          cd "$PROJECT_DIR"
           gradle --no-daemon --stacktrace assembleDebug
 
-      - name: Guardar APK
+      - name: Disponibilizar APK
         uses: actions/upload-artifact@v4
         with:
           name: Macumu-Global-APK-Android-7-Plus
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
