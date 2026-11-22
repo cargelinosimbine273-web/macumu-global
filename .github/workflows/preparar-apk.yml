@@ -1,4 +1,4 @@
-name: Preparar APK - Macumu Global
+name: Macumu Global - Compilar e validar APK
 
 on:
   workflow_dispatch:
@@ -9,13 +9,17 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: macumu-global-build
+  cancel-in-progress: true
+
 jobs:
   build:
-    name: Compilar Macumu Global
+    name: Compilar APK Android 7+
     runs-on: ubuntu-latest
 
     steps:
-      - name: Obter codigo do projeto
+      - name: Obter código do projecto
         uses: actions/checkout@v4
 
       - name: Configurar Java 17
@@ -24,51 +28,72 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Configurar Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Instalar SDK e ferramentas
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager --install \
+            "platform-tools" \
+            "platforms;android-36" \
+            "platforms;android-36-ext1" \
+            "build-tools;36.0.0"
+
       - name: Configurar Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.3.1'
 
-      - name: Configurar Android SDK
-        uses: android-actions/setup-android@v4
-        with:
-          packages: ''
-
-      - name: Instalar pacotes Android
+      - name: Confirmar assinatura Debug estável
+        shell: bash
         run: |
-          sdkmanager --install \
-            "platform-tools" \
-            "platforms;android-36" \
-            "build-tools;36.0.0"
-
-      - name: Aceitar licencas Android
-        run: yes | sdkmanager --licenses || true
-
-      - name: Gerar assinatura Debug
-        run: |
-          keytool -genkeypair -v \
+          test -s "$GITHUB_WORKSPACE/debug.keystore"
+          keytool -list \
             -keystore "$GITHUB_WORKSPACE/debug.keystore" \
             -storepass android \
-            -alias androiddebugkey \
-            -keypass android \
-            -keyalg RSA \
-            -keysize 2048 \
-            -validity 10000 \
-            -dname "CN=Android Debug,O=Android,C=US"
+            -alias androiddebugkey
 
-      - name: Verificar Keystore
+      - name: Executar testes e compilar APK
         run: |
-          ls -lh "$GITHUB_WORKSPACE/debug.keystore"
+          gradle --no-daemon --stacktrace \
+            :app:testDebugUnitTest \
+            :app:assembleDebug
 
-      - name: Compilar APK
+      - name: Validar APK
+        shell: bash
         run: |
-          gradle --no-daemon --stacktrace assembleDebug
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          APKSIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+          AAPT="$ANDROID_HOME/build-tools/36.0.0/aapt"
 
-      - name: Guardar APK
+          test -s "$APK"
+
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
+
+          "$AAPT" dump badging "$APK" | tee apk-badging.txt
+
+          grep -q "package: name='com.aistudio.macumuglobal.hqvkrz'" apk-badging.txt
+          grep -q "sdkVersion:'24'" apk-badging.txt
+
+          echo "APK validado: pacote e Android mínimo API 24."
+
+      - name: Disponibilizar APK
         uses: actions/upload-artifact@v4
         with:
-          name: Macumu-Global-APK
-          path: |
-            **/build/outputs/apk/debug/*.apk
+          name: Macumu-Global-APK-Android-7-Plus
+          path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
+
+      - name: Guardar relatórios
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Macumu-Global-Relatorios
+          path: |
+            app/build/reports/tests/
+            apk-badging.txt
+          if-no-files-found: ignore
+          retention-days: 7
