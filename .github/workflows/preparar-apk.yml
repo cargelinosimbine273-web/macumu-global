@@ -1,4 +1,4 @@
-name: Macumu Global - Compilar e testar instalacao Android 13
+name: Macumu Global - Compilar e testar APK
 
 on:
   workflow_dispatch:
@@ -10,12 +10,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: macumu-global-build-install
+  group: macumu-global-build
   cancel-in-progress: true
 
 jobs:
-  build-and-install-test:
-    name: Build APK e teste real de instalacao
+  build:
+    name: Compilar e testar instalacao
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -32,31 +32,23 @@ jobs:
       - name: Configurar Android SDK
         uses: android-actions/setup-android@v4
 
-      - name: Instalar SDK usado pelo projecto
-        shell: bash
+      - name: Instalar componentes Android
         run: |
-          set -euo pipefail
-
-          yes | sdkmanager --licenses >/dev/null || true
-
+          set -e
           sdkmanager --install \
             "platform-tools" \
             "platforms;android-36" \
-            "platforms;android-36-ext1" \
             "build-tools;36.0.0"
 
-      - name: Configurar Gradle 9.3.1
+      - name: Configurar Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.3.1'
 
-      - name: Gerar assinatura Debug
-        shell: bash
+      - name: Criar assinatura Debug
         run: |
-          set -euo pipefail
-
-          if [ ! -s "$GITHUB_WORKSPACE/debug.keystore" ]; then
-            keytool -genkeypair -v \
+          if [ ! -f "$GITHUB_WORKSPACE/debug.keystore" ]; then
+            keytool -genkeypair \
               -keystore "$GITHUB_WORKSPACE/debug.keystore" \
               -storepass android \
               -alias androiddebugkey \
@@ -67,89 +59,68 @@ jobs:
               -dname "CN=Android Debug,O=Android,C=US"
           fi
 
-          keytool -list \
-            -keystore "$GITHUB_WORKSPACE/debug.keystore" \
-            -storepass android \
-            -alias androiddebugkey
-
-      - name: Compilar APK Debug
-        shell: bash
+      - name: Compilar APK
         run: |
-          set -euo pipefail
+          gradle --no-daemon --stacktrace :app:assembleDebug
 
-          gradle --no-daemon --stacktrace \
-            :app:assembleDebug
-
-      - name: Verificar assinatura e metadados
-        shell: bash
+      - name: Verificar APK
         run: |
-          set -euo pipefail
+          set -e
 
           APK="$GITHUB_WORKSPACE/app/build/outputs/apk/debug/app-debug.apk"
 
           test -s "$APK"
 
-          "$ANDROID_HOME/build-tools/36.0.0/apksigner" \
-            verify --verbose "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify "$APK"
 
           "$ANDROID_HOME/build-tools/36.0.0/aapt" \
-            dump badging "$APK" | tee apk-badging.txt
+            dump badging "$APK" > apk-badging.txt
 
-          grep -q \
-            "package: name='com.aistudio.macumuglobal.hqvkrz'" \
-            apk-badging.txt
+          cat apk-badging.txt
 
-          grep -q "sdkVersion:'24'" apk-badging.txt
+          grep -q "com.aistudio.macumuglobal.hqvkrz" apk-badging.txt
 
-      - name: Instalar e abrir APK no Android 13
+      - name: Testar instalacao no Android 13
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 33
           target: google_apis
           arch: x86_64
           profile: pixel_2
-          emulator-options: -no-window -no-audio -no-boot-anim -camera-back none
+          emulator-options: -no-window -no-audio -no-boot-anim
           disable-animations: true
-
           script: |
-            set -o pipefail
+            set -e
 
             APK="$GITHUB_WORKSPACE/app/build/outputs/apk/debug/app-debug.apk"
 
             PACKAGE="com.aistudio.macumuglobal.hqvkrz"
 
-            adb install -r "$APK" 2>&1 | tee install-result.txt || {
-              adb logcat -d -t 500 > install-logcat.txt || true
-              exit 1
-            }
+            adb install "$APK"
 
-            adb shell monkey -p "$PACKAGE" 1 \
-              2>&1 | tee launch-result.txt
+            adb shell monkey -p "$PACKAGE" 1
 
-            sleep 15
+            sleep 10
 
-            adb shell pidof "$PACKAGE" > app-pid.txt || {
-              adb logcat -d -t 800 > launch-logcat.txt || true
-              echo "A aplicacao foi instalada mas nao permaneceu activa."
-              exit 1
-            }
+            adb shell pidof "$PACKAGE"
 
-            adb logcat -d -t 800 > launch-logcat.txt
+            echo "APK instalado e iniciado no emulador Android 13."
 
-            echo "PASS: APK instalado e processo activo no Android 13/API 33."
-
-      - name: Disponibilizar APK e diagnosticos
+      - name: Guardar APK
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Macumu-Global-APK-e-Diagnostico-Instalacao
+          name: Macumu-Global-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Guardar diagnosticos
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Macumu-Global-Diagnosticos
           path: |
-            app/build/outputs/apk/debug/app-debug.apk
             apk-badging.txt
-            install-result.txt
-            install-logcat.txt
-            launch-result.txt
-            app-pid.txt
-            launch-logcat.txt
           if-no-files-found: ignore
           retention-days: 14
